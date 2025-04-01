@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リアルタイム来場者ダッシュボード (地図表示)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      @font-face {
+        font-family: 'LucideIcons';
+        src: url(https://cdn.jsdelivr.net/npm/lucide-static@latest/font/Lucide.ttf) format('truetype');
+      }
+      .lucide {
+        font-family: 'LucideIcons';
+        font-size: 1.2rem; line-height: 1;
+      }
+      html, body {
+          height: 100%;
+          font-family: 'Inter', sans-serif;
+          scroll-behavior: smooth;
+      }
+      /* Card styling */
+      .card {
+          @apply bg-white p-6 shadow-lg rounded-xl relative overflow-hidden transition-all duration-300 ease-in-out;
+      }
+      /* Stat number styling */
+      .stat-number {
+          @apply text-5xl font-bold text-indigo-600 tracking-tight;
+      }
+      /* Chart and Map container sizing */
+      #facultyChartContainer, #originMapContainer {
+          min-height: 350px; /* Ensure minimum height */
+          max-height: 500px; /* Limit maximum height */
+          width: 100%;
+          margin: auto;
+      }
+       #originMapContainer svg {
+           display: block; /* Remove extra space below SVG */
+           width: 100%;
+           height: 100%;
+       }
+
+      /* Map styles */
+      .prefecture {
+          fill: #e5e7eb; /* Light gray fill */
+          stroke: #9ca3af; /* Gray border */
+          stroke-width: 0.5px;
+          transition: fill 0.2s ease-in-out;
+      }
+      .prefecture:hover {
+          fill: #d1d5db; /* Slightly darker on hover */
+      }
+      .visitor-dot {
+          fill: #4f46e5; /* Indigo color */
+          fill-opacity: 0.6;
+          stroke: #fff;
+          stroke-width: 0.5px;
+          transition: r 0.3s ease-out, fill-opacity 0.2s ease-in-out;
+          cursor: pointer;
+      }
+       .visitor-dot:hover {
+           fill-opacity: 0.9;
+       }
+
+      /* Tooltip styles */
+      #mapTooltip {
+          @apply absolute bg-gray-900 text-white text-xs rounded-md px-2 py-1 pointer-events-none shadow-lg whitespace-nowrap transition-opacity duration-200;
+          opacity: 0;
+          z-index: 30; /* Ensure tooltip is above map elements */
+      }
+
+      /* Loading Indicator */
+      .loading-indicator {
+          @apply absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 rounded-lg z-10;
+          display: none; /* Hidden by default */
+      }
+      .loading-spinner {
+          @apply animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500;
+      }
+      /* Error Message */
+      #errorMessage {
+          @apply bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6 shadow;
+          display: none; /* Hidden by default */
+      }
+      /* Responsive adjustments */
+       @media (min-width: 1024px) { /* lg breakpoint */
+            #facultyChartContainer { max-height: 450px; }
+            #originMapContainer { max-height: 450px; }
+       }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-indigo-100 flex flex-col min-h-screen">
+
+    <header class="bg-white/80 backdrop-blur-md shadow-md sticky top-0 z-20 border-b border-gray-200">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-indigo-700">リアルタイム来場者ダッシュボード</h1>
+            <div id="lastUpdated" class="text-sm text-gray-600">更新中...</div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+
+        <div id="errorMessage">
+            <strong class="font-bold">エラー:</strong>
+            <span id="errorMessageText"></span>
+        </div>
+
+        <section id="stats-area" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="card text-center">
+                 <div class="loading-indicator"><div class="loading-spinner"></div></div>
+                <h2 class="text-lg font-medium text-gray-500 mb-2">今日の来場者数</h2>
+                <p id="todayCount" class="stat-number">-</p>
+            </div>
+            <div class="card text-center">
+                 <div class="loading-indicator"><div class="loading-spinner"></div></div>
+                <h2 class="text-lg font-medium text-gray-500 mb-2">総来場者数</h2>
+                <p id="totalCount" class="stat-number">-</p>
+            </div>
+        </section>
+
+        <section id="viz-area" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="card">
+                 <div class="loading-indicator"><div class="loading-spinner"></div></div>
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">学部別割合</h2>
+                <div id="facultyChartContainer">
+                    <canvas id="facultyChart"></canvas>
+                </div>
+                 <p id="noFacultyData" class="text-center text-gray-500 mt-4 hidden">学部データがありません</p>
+            </div>
+
+            <div class="card">
+                 <div class="loading-indicator"><div class="loading-spinner"></div></div>
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">出身地マップ</h2>
+                <div id="originMapContainer">
+                    </div>
+                 <p id="noOriginData" class="text-center text-gray-500 mt-4 hidden">出身地データがありません</p>
+                 <div id="mapTooltip"></div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-gray-800 text-white text-center py-4 mt-12">
+        <p class="text-sm">&copy; 2025 リアルタイム来場者ダッシュボード</p>
+    </footer>
+
+    <script>
+        // --- Configuration ---
+        // !!! 重要: ここにデプロイしたGAS WebアプリのURLを貼り付けてください !!!
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzSbgg7P5JndSVUhdYK--t5wNw8-K5cx27wJyBNPf8reB71TXcFSIMkmYp3XOJWh3g/exec';
+        const UPDATE_INTERVAL_MS = 30000; // データ更新間隔 (ミリ秒) - 例: 30秒
+        const JAPAN_TOPOJSON_URL = 'https://unpkg.com/japan-map-js@1.0.1/japan.topojson'; // 日本のTopoJSONデータ
+
+        // --- Elements ---
+        const todayCountEl = document.getElementById('todayCount');
+        const totalCountEl = document.getElementById('totalCount');
+        const facultyChartCanvas = document.getElementById('facultyChart').getContext('2d');
+        const noFacultyDataEl = document.getElementById('noFacultyData');
+        const facultyChartContainer = document.getElementById('facultyChartContainer');
+        const originMapContainer = document.getElementById('originMapContainer');
+        const noOriginDataEl = document.getElementById('noOriginData');
+        const mapTooltipEl = document.getElementById('mapTooltip');
+        const lastUpdatedEl = document.getElementById('lastUpdated');
+        const errorMessageDiv = document.getElementById('errorMessage');
+        const errorMessageTextEl = document.getElementById('errorMessageText');
+        const loadingIndicators = document.querySelectorAll('.loading-indicator');
+
+        let facultyChart = null; // Chart instance
+        let updateIntervalId = null; // Interval ID
+        let japanGeoData = null; // To cache Japan map data
+
+        // --- Prefectural Coordinates (Approximate Centers) ---
+        // データソースや用途に応じて調整してください
+        const prefectureCoords = {
+          "北海道": [142.863, 43.398], "青森県": [140.74, 40.82], "岩手県": [141.15, 39.7],
+          "宮城県": [140.87, 38.27], "秋田県": [140.1, 39.72], "山形県": [140.37, 38.24],
+          "福島県": [140.47, 37.75], "茨城県": [140.47, 36.34], "栃木県": [139.88, 36.57],
+          "群馬県": [139.06, 36.39], "埼玉県": [139.65, 35.86], "千葉県": [140.12, 35.6],
+          "東京都": [139.69, 35.69], "神奈川県": [139.64, 35.45], "新潟県": [139.02, 37.9],
+          "富山県": [137.21, 36.7], "石川県": [136.66, 36.59], "福井県": [136.07, 36.07],
+          "山梨県": [138.57, 35.66], "長野県": [138.18, 36.65], "岐阜県": [136.72, 35.39],
+          "静岡県": [138.38, 34.98], "愛知県": [136.91, 35.18], "三重県": [136.51, 34.73],
+          "滋賀県": [135.87, 35.0], "京都府": [135.76, 35.01], "大阪府": [135.52, 34.69],
+          "兵庫県": [135.18, 34.69], "奈良県": [135.83, 34.69], "和歌山県": [135.17, 34.23],
+          "鳥取県": [134.24, 35.5], "島根県": [133.05, 35.47], "岡山県": [133.92, 34.66],
+          "広島県": [132.45, 34.4], "山口県": [131.47, 34.19], "徳島県": [134.56, 34.07],
+          "香川県": [134.04, 34.34], "愛媛県": [132.77, 33.84], "高知県": [133.53, 33.56],
+          "福岡県": [130.42, 33.61], "佐賀県": [130.3, 33.26], "長崎県": [129.87, 32.74],
+          "熊本県": [130.74, 32.79], "大分県": [131.61, 33.24], "宮崎県": [131.42, 31.91],
+          "鹿児島県": [130.56, 31.56], "沖縄県": [127.68, 26.21]
+        };
+
+        // --- Utility Functions ---
+        function showLoading() {
+            loadingIndicators.forEach(el => el.style.display = 'flex');
+            todayCountEl.textContent = '-'; totalCountEl.textContent = '-';
+            noFacultyDataEl.classList.add('hidden');
+            noOriginDataEl.classList.add('hidden');
+            facultyChartContainer.classList.add('opacity-50');
+            originMapContainer.classList.add('opacity-50');
+            hideError();
+        }
+        function hideLoading() {
+            loadingIndicators.forEach(el => el.style.display = 'none');
+            facultyChartContainer.classList.remove('opacity-50');
+            originMapContainer.classList.remove('opacity-50');
+        }
+        function showError(message) {
+            errorMessageTextEl.textContent = message;
+            errorMessageDiv.style.display = 'block';
+            hideLoading();
+        }
+         function hideError() {
+            errorMessageDiv.style.display = 'none';
+            errorMessageTextEl.textContent = '';
+        }
+
+        // --- Data Fetching ---
+        async function fetchData() {
+             if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL === 'YOUR_GAS_WEB_APP_URL') {
+                 showError('GAS WebアプリのURLが設定されていません。'); stopAutoUpdate(); return;
+            }
+            console.log("Fetching data...");
+            showLoading();
+            try {
+                const url = `${GAS_WEB_APP_URL}?_=${new Date().getTime()}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`データ取得エラー (HTTP ${response.status})`);
+                const data = await response.json();
+                console.log("Data received:", data);
+                await updateDashboard(data); // Make update async to wait for map data
+                hideError();
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                showError(error.message || 'データ取得中に不明なエラーが発生しました。');
+            } finally {
+                hideLoading();
+                lastUpdatedEl.textContent = `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
+            }
+        }
+
+        // --- Dashboard Update ---
+        async function updateDashboard(data) {
+            if (!data) return;
+            // 1. Update Counts
+            todayCountEl.textContent = data.todayVisitors ?? '-';
+            totalCountEl.textContent = data.totalVisitors ?? '-';
+
+            // 2. Render Faculty Chart
+            const facultyLabels = data.facultyCount ? Object.keys(data.facultyCount) : [];
+            const facultyData = data.facultyCount ? Object.values(data.facultyCount) : [];
+            renderFacultyChart(facultyLabels, facultyData);
+
+            // 3. Render Origin Map
+            const originCounts = data.locationCount || {};
+             // Ensure map data is loaded before rendering points
+            if (!japanGeoData) {
+                try {
+                    japanGeoData = await d3.json(JAPAN_TOPOJSON_URL);
+                    console.log("TopoJSON data loaded.");
+                } catch (error) {
+                    console.error("Error loading TopoJSON:", error);
+                    showError("地図データの読み込みに失敗しました。");
+                    return; // Stop if map data fails to load
+                }
+            }
+            renderJapanMap(originCounts);
+        }
+
+        // --- Chart Rendering ---
+        function renderFacultyChart(labels, data) {
+             if (facultyChart) facultyChart.destroy();
+             if (!labels || labels.length === 0) {
+                 facultyChartContainer.style.display = 'none';
+                 noFacultyDataEl.classList.remove('hidden');
+                 return;
+             } else {
+                 facultyChartContainer.style.display = 'block';
+                 noFacultyDataEl.classList.add('hidden');
+             }
+            const backgroundColors = labels.map((_, i) => `hsl(${i * (360 / Math.max(labels.length, 1))}, 75%, 65%)`);
+            const hoverBackgroundColors = labels.map((_, i) => `hsl(${i * (360 / Math.max(labels.length, 1))}, 75%, 55%)`);
+            facultyChart = new Chart(facultyChartCanvas, { /* ... Chart config (same as previous) ... */
+                 type: 'pie',
+                 data: {
+                     labels: labels,
+                     datasets: [{
+                         label: '学部別人数', data: data,
+                         backgroundColor: backgroundColors, hoverBackgroundColor: hoverBackgroundColors,
+                         borderColor: '#fff', borderWidth: 1
+                     }]
+                 },
+                 options: {
+                     responsive: true, maintainAspectRatio: false,
+                     plugins: {
+                         legend: { position: 'bottom', labels: { padding: 15, boxWidth: 12, font: { size: 11 } } },
+                         tooltip: {
+                             callbacks: {
+                                 label: function(context) {
+                                     let label = context.label || ''; if (label) label += ': ';
+                                     if (context.parsed !== null) label += context.parsed + '人';
+                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                     if (total > 0) label += ` (${((context.parsed / total) * 100).toFixed(1)}%)`;
+                                     return label;
+                                 }
+                             }
+                         }
+                     }
+                 }
+            });
+        }
+
+        // --- Map Rendering (D3.js) ---
+        function renderJapanMap(originCounts) {
+             originMapContainer.innerHTML = ''; // Clear previous map
+             mapTooltipEl.style.opacity = 0; // Hide tooltip initially
+
+             const validOrigins = Object.entries(originCounts)
+                .filter(([pref, count]) => prefectureCoords[pref] && count > 0); // Filter valid prefectures with counts
+
+             if (!japanGeoData || validOrigins.length === 0) {
+                 noOriginDataEl.classList.remove('hidden');
+                 console.log("No valid origin data or map data not ready.");
+                 return;
+             } else {
+                 noOriginDataEl.classList.add('hidden');
+             }
+
+            const width = originMapContainer.clientWidth;
+            const height = Math.max(350, originMapContainer.clientHeight); // Use container height or min height
+            originMapContainer.innerHTML = ''; // Clear previous map
+
+            const svg = d3.select("#originMapContainer").append("svg")
+                .attr("viewBox", `0 0 ${width} ${height}`) // Make SVG responsive
+                .attr("preserveAspectRatio", "xMidYMid meet");
+
+
+             // Convert TopoJSON to GeoJSON features
+             const features = topojson.feature(japanGeoData, japanGeoData.objects.japan).features;
+
+             // Create projection and path generator
+             const projection = d3.geoMercator()
+                 .fitSize([width, height], topojson.feature(japanGeoData, japanGeoData.objects.japan)); // Fit map to container
+             const path = d3.geoPath().projection(projection);
+
+             // Draw prefectures
+             svg.selectAll(".prefecture")
+                 .data(features)
+                 .enter().append("path")
+                 .attr("class", "prefecture")
+                 .attr("d", path)
+                 .attr("data-name", d => d.properties.name_ja || d.properties.nam_ja); // Use correct property name
+
+             // Prepare data for dots
+             const maxCount = Math.max(...validOrigins.map(([, count]) => count), 0); // Find max count for scaling
+
+             // Scale for dot radius (sqrt scale makes area proportional to count)
+             const radiusScale = d3.scaleSqrt()
+                 .domain([0, maxCount]) // Input domain: 0 to max visitors
+                 .range([0, Math.min(width, height) * 0.05]); // Output range: 0 to 5% of min dimension (adjust as needed)
+
+             // Draw visitor dots
+             svg.selectAll(".visitor-dot")
+                 .data(validOrigins)
+                 .enter().append("circle")
+                 .attr("class", "visitor-dot")
+                 .attr("cx", d => projection(prefectureCoords[d[0]])[0]) // d[0] is prefecture name
+                 .attr("cy", d => projection(prefectureCoords[d[0]])[1])
+                 .attr("r", 0) // Start radius at 0 for transition
+                 .on("mouseover", (event, d) => {
+                     mapTooltipEl.style.opacity = 1;
+                     mapTooltipEl.textContent = `${d[0]}: ${d[1]}人`; // d[0] = pref, d[1] = count
+                 })
+                 .on("mousemove", (event) => {
+                      // Position tooltip near cursor
+                      // Add small offsets (e.g., +10) to prevent tooltip flickering
+                      mapTooltipEl.style.left = (event.pageX + 10) + 'px';
+                      mapTooltipEl.style.top = (event.pageY + 10) + 'px';
+                 })
+                 .on("mouseout", () => {
+                     mapTooltipEl.style.opacity = 0;
+                 })
+                 .transition() // Add transition for radius
+                 .duration(500) // Duration in ms
+                 .delay((d, i) => i * 10) // Stagger the animation slightly
+                 .attr("r", d => radiusScale(d[1])); // Animate to final radius
+
+             // Handle window resize - redraw map to fit
+             let resizeTimer;
+             window.addEventListener('resize', () => {
+                 clearTimeout(resizeTimer);
+                 resizeTimer = setTimeout(() => {
+                     console.log("Window resized, redrawing map...");
+                     renderJapanMap(originCounts); // Redraw with current data
+                 }, 250); // Debounce resize event
+             });
+        }
+
+
+        // --- Auto Update ---
+        function startAutoUpdate() {
+            if (updateIntervalId) clearInterval(updateIntervalId);
+            fetchData(); // Fetch immediately
+            updateIntervalId = setInterval(fetchData, UPDATE_INTERVAL_MS);
+            console.log(`Auto-update started (${UPDATE_INTERVAL_MS}ms)`);
+        }
+        function stopAutoUpdate() {
+            if (updateIntervalId) clearInterval(updateIntervalId);
+            updateIntervalId = null; console.log("Auto-update stopped.");
+        }
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', startAutoUpdate);
+
+    </script>
+
+</body>
+</html>
+
