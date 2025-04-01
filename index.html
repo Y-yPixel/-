@@ -61,11 +61,20 @@
         renderChart('locationChart', '出身地割合', data.locationCount);
     }
     
-    function renderChart(canvasId, label, dataObj) {
-    const ctx = document.getElementById(canvasId).getContext('2d');
+    let charts = {}; // 既存のチャートを管理するオブジェクト
+
+function renderChart(canvasId, label, dataObj) {
     if (!dataObj || Object.keys(dataObj).length === 0) return;
     
-    new Chart(ctx, {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+
+    // 既存のチャートがあれば削除
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+
+    // 新しいチャートを作成して保存
+    charts[canvasId] = new Chart(ctx, {
         type: 'pie',
         data: {
             labels: Object.keys(dataObj),
@@ -74,10 +83,7 @@
                 backgroundColor: ['#6366F1', '#EF4444', '#10B981', '#F59E0B']
             }]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false
-        }
+        options: { responsive: true }
     });
 }
     document.addEventListener('DOMContentLoaded', () => {
