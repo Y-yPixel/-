@@ -1,8 +1,9 @@
-<!DOCTYPE html><html lang="ja">
+<!DOCTYPE html>
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>志正弓道場リアルタイム来場者ダッシュボードサイト</title>
+    <title>志正弓道場来場者リアルタイムダッシュボード</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,100 +12,87 @@
 </head>
 <body class="bg-gray-50">
     <div class="container mx-auto p-6">
-        <h1 class="text-2xl font-bold text-gray-950 mb-6">志正弓道場リアルタイム来場者ダッシュボード</h1>
-        <div class="text-right text-sm text-gray-600" id="lastUpdated">最終更新: -</div>
+        <h1 class="text-2xl font-bold text-gray-900 mb-6">志正弓道場来場者リアルタイムダッシュボード</h1>
+        
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="bg-white p-6 shadow rounded-lg">
-                <h2 class="text-lg font-medium text-gray-500 mb-2">今日の来場者数</h2>
+                <h2 class="text-lg font-medium text-gray-700 mb-2">今日の来場者数</h2>
                 <p id="todayCount" class="text-5xl font-bold text-gray-950">-</p>
             </div>
             <div class="bg-white p-6 shadow rounded-lg">
-                <h2 class="text-lg font-medium text-gray-500 mb-2">総来場者数</h2>
+                <h2 class="text-lg font-medium text-gray-700 mb-2">総来場者数</h2>
                 <p id="totalCount" class="text-5xl font-bold text-gray-950">-</p>
             </div>
         </div>
-<div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-    <div class="bg-white p-6 shadow rounded-lg flex flex-col items-center">
-        <h2 class="text-2xl font-semibold mb-4">学部別割合</h2>
-        <div class="w-64 h-64">
-            <canvas id="facultyChart"></canvas>
-        </div>
-    </div>
-    <div class="bg-white p-6 shadow rounded-lg flex flex-col items-center">
-        <h2 class="text-2xl font-semibold mb-4">出身地割合</h2>
-        <div class="w-64 h-64">
-            <canvas id="locationChart"></canvas>
-        </div>
-    </div>
-</div>
-<script>
-    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyLKVF2e1CzxsqoVnkT-l1dpxDf6OUXxEHidK7qgiJtS5SONNDfMfo2rje3Epzm3_s/exec';
-    const UPDATE_INTERVAL_MS = 10000;
-    
-    async function fetchData() {
-        try {
-            const response = await fetch(GAS_WEB_APP_URL);
-            if (!response.ok) throw new Error(`データ取得エラー (HTTP ${response.status})`);
-            const data = await response.json();
-            updateDashboard(data);
-        } catch (error) {
-            console.error('データ取得エラー:', error);
-        }
-    }
-    
-    function updateDashboard(data) {
-        document.getElementById('todayCount').textContent = data.todayVisitors ?? '-';
-        document.getElementById('totalCount').textContent = data.totalVisitors ?? '-';
-        document.getElementById('lastUpdated').textContent = `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
         
-        renderChart('facultyChart', '学部別割合', data.facultyCount);
-        renderChart('locationChart', '出身地割合', data.locationCount);
-    }
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
+            <div class="bg-white p-6 shadow rounded-lg">
+                <h2 class="text-2xl font-semibold text-gray-950 mb-4">学部別割合</h2>
+                <canvas id="facultyChart"></canvas>
+            </div>
+            <div class="bg-white p-6 shadow rounded-lg">
+                <h2 class="text-2xl font-semibold text-gray-950 mb-4">出身地割合</h2>
+                <canvas id="locationChart"></canvas>
+            </div>
+            <div class="bg-white p-6 shadow rounded-lg">
+                <h2 class="text-2xl font-semibold text-gray-950 mb-4">弓道経験割合</h2>
+                <canvas id="kyudoChart"></canvas>
+            </div>
+        </div>
+    </div>
     
-    let charts = {}; // 既存のチャートを管理するオブジェクト
-
-const chartColors = [
-    '#FF5733', '#33FF57', '#3357FF', '#FF33A1', '#A133FF',
-    '#33FFA1', '#FFA133', '#57FF33', '#A1FF33', '#33A1FF',
-    '#FF3380', '#8033FF', '#33FF80', '#3380FF', '#FF8033',
-    '#8033A1', '#A18033', '#3380A1', '#A13380', '#80A133',
-    '#FFB533', '#33FFB5', '#B533FF', '#33B5FF', '#FF33B5',
-    '#B5FF33', '#FF3380', '#80FF33', '#3380FF', '#FF8033'
-];
-
-function renderChart(canvasId, label, dataObj) {
-    if (!dataObj || Object.keys(dataObj).length === 0) return;
-    
-    const ctx = document.getElementById(canvasId).getContext('2d');
-
-    // 既存のチャートがあれば削除
-    if (charts[canvasId]) {
-        charts[canvasId].destroy();
-    }
-
-    // ラベルの数に応じた色を適用
-    const labels = Object.keys(dataObj);
-    const dataValues = Object.values(dataObj);
-    const colors = chartColors.slice(0, labels.length);  // 必要な分だけ色を切り取る
-
-    // 新しいチャートを作成して保存
-    charts[canvasId] = new Chart(ctx, {
-        type: 'pie',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: dataValues,
-                backgroundColor: colors
-            }]
-        },
-        options: { responsive: true }
-    });
-}
-    document.addEventListener('DOMContentLoaded', () => {
-        fetchData();
-        setInterval(fetchData, UPDATE_INTERVAL_MS);
-    });
-</script>
-
+    <script>
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxGKqPIIByjxxphtyHbLr-ajMMHQwDaQ1VyHcQZ2sR51rMb1ilSlDiPzowDhi_ljypr/exec';
+        const UPDATE_INTERVAL_MS = 10000;
+        
+        async function fetchData() {
+            try {
+                const response = await fetch(GAS_WEB_APP_URL);
+                if (!response.ok) throw new Error(`データ取得エラー (HTTP ${response.status})`);
+                const data = await response.json();
+                updateDashboard(data);
+            } catch (error) {
+                console.error('データ取得エラー:', error);
+            }
+        }
+        
+        function updateDashboard(data) {
+            document.getElementById('todayCount').textContent = data.todayVisitors ?? '-';
+            document.getElementById('totalCount').textContent = data.totalVisitors ?? '-';
+            
+            renderChart('facultyChart', data.facultyCount);
+            renderChart('locationChart', data.locationCount);
+            renderChart('kyudoChart', data.kyudoExperience);
+        }
+        
+        function renderChart(canvasId, dataObj) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            if (!dataObj || Object.keys(dataObj).length === 0) return;
+            
+            const colors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF',
+                '#1D4ED8', '#9333EA', '#E11D48', '#047857', '#7C3AED', '#3B82F6', '#FACC15', '#EAB308',
+                '#EF4444', '#D946EF', '#8B5CF6', '#0D9488', '#16A34A', '#DC2626', '#B91C1C', '#F97316',
+                '#A855F7', '#14B8A6', '#F59E0B', '#10B981', '#3F83F8', '#6B7280', '#60A5FA'
+            ];
+            
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(dataObj),
+                    datasets: [{
+                        data: Object.values(dataObj),
+                        backgroundColor: colors.slice(0, Object.keys(dataObj).length)
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData();
+            setInterval(fetchData, UPDATE_INTERVAL_MS);
+        });
+    </script>
 </body>
 </html>
