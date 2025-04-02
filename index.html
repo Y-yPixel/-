@@ -63,6 +63,15 @@
     
     let charts = {}; // 既存のチャートを管理するオブジェクト
 
+const chartColors = [
+    '#FF5733', '#33FF57', '#3357FF', '#FF33A1', '#A133FF',
+    '#33FFA1', '#FFA133', '#57FF33', '#A1FF33', '#33A1FF',
+    '#FF3380', '#8033FF', '#33FF80', '#3380FF', '#FF8033',
+    '#8033A1', '#A18033', '#3380A1', '#A13380', '#80A133',
+    '#FFB533', '#33FFB5', '#B533FF', '#33B5FF', '#FF33B5',
+    '#B5FF33', '#FF3380', '#80FF33', '#3380FF', '#FF8033'
+];
+
 function renderChart(canvasId, label, dataObj) {
     if (!dataObj || Object.keys(dataObj).length === 0) return;
     
@@ -73,14 +82,19 @@ function renderChart(canvasId, label, dataObj) {
         charts[canvasId].destroy();
     }
 
+    // ラベルの数に応じた色を適用
+    const labels = Object.keys(dataObj);
+    const dataValues = Object.values(dataObj);
+    const colors = chartColors.slice(0, labels.length);  // 必要な分だけ色を切り取る
+
     // 新しいチャートを作成して保存
     charts[canvasId] = new Chart(ctx, {
         type: 'pie',
         data: {
-            labels: Object.keys(dataObj),
+            labels: labels,
             datasets: [{
-                data: Object.values(dataObj),
-                backgroundColor: ['#6366F1', '#EF4444', '#10B981', '#F59E0B']
+                data: dataValues,
+                backgroundColor: colors
             }]
         },
         options: { responsive: true }
