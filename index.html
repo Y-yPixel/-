@@ -12,71 +12,88 @@
 </head>
 <body class="bg-gray-50">
     <div class="container mx-auto p-6">
-        <h1 class="text-2xl font-bold text-gray-900 mb-6">志正弓道場来場者リアルタイムダッシュボード</h1>
+        <h1 class="text-2xl font-bold text-gray-900 mb-6">志正弓道場来場者数ダッシュボード</h1>
+
+      <div class="text-right text-gray-600 text-sm mt-4">最終更新: <span id="lastUpdated">-</span></div>
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="bg-white p-6 shadow rounded-lg">
                 <h2 class="text-lg font-medium text-gray-700 mb-2">今日の来場者数</h2>
-                <p id="todayCount" class="text-5xl font-bold text-gray-950">-</p>
+                <p id="todayCount" class="text-5xl font-bold text-gray-900">-</p>
             </div>
             <div class="bg-white p-6 shadow rounded-lg">
                 <h2 class="text-lg font-medium text-gray-700 mb-2">総来場者数</h2>
-                <p id="totalCount" class="text-5xl font-bold text-gray-950">-</p>
+                <p id="totalCount" class="text-5xl font-bold text-gray-900">-</p>
             </div>
         </div>
         
+        
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
             <div class="bg-white p-6 shadow rounded-lg">
-                <h2 class="text-2xl font-semibold text-gray-950 mb-4">学部別割合</h2>
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4">学部別割合</h2>
                 <canvas id="facultyChart"></canvas>
             </div>
             <div class="bg-white p-6 shadow rounded-lg">
-                <h2 class="text-2xl font-semibold text-gray-950 mb-4">出身地割合</h2>
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4">出身地割合</h2>
                 <canvas id="locationChart"></canvas>
             </div>
             <div class="bg-white p-6 shadow rounded-lg">
-                <h2 class="text-2xl font-semibold text-gray-950 mb-4">弓道経験割合</h2>
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4">弓道経験割合</h2>
                 <canvas id="kyudoChart"></canvas>
             </div>
         </div>
     </div>
     
+    <footer class="text-center text-gray-600 text-sm mt-8 p-4">2025 慶應義塾體育會弓術部</footer>
+    
     <script>
         const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxGKqPIIByjxxphtyHbLr-ajMMHQwDaQ1VyHcQZ2sR51rMb1ilSlDiPzowDhi_ljypr/exec';
         const UPDATE_INTERVAL_MS = 10000;
-        
+        let charts = {}; // グラフのインスタンス管理用
+
         async function fetchData() {
             try {
                 const response = await fetch(GAS_WEB_APP_URL);
                 if (!response.ok) throw new Error(`データ取得エラー (HTTP ${response.status})`);
                 const data = await response.json();
+
                 updateDashboard(data);
+                renderChart('facultyChart', data.facultyCount);
+                renderChart('locationChart', data.locationCount);
+                renderChart('kyudoChart', data.kyudoExperience);
+                updateTimestamp();
             } catch (error) {
                 console.error('データ取得エラー:', error);
             }
         }
-        
+
         function updateDashboard(data) {
             document.getElementById('todayCount').textContent = data.todayVisitors ?? '-';
             document.getElementById('totalCount').textContent = data.totalVisitors ?? '-';
-            
-            renderChart('facultyChart', data.facultyCount);
-            renderChart('locationChart', data.locationCount);
-            renderChart('kyudoChart', data.kyudoExperience);
         }
-        
+
+        function updateTimestamp() {
+            const now = new Date();
+            const formattedTime = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('lastUpdated').textContent = formattedTime;
+        }
+
         function renderChart(canvasId, dataObj) {
-            const ctx = document.getElementById(canvasId).getContext('2d');
             if (!dataObj || Object.keys(dataObj).length === 0) return;
-            
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+
             const colors = [
                 '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF',
                 '#1D4ED8', '#9333EA', '#E11D48', '#047857', '#7C3AED', '#3B82F6', '#FACC15', '#EAB308',
                 '#EF4444', '#D946EF', '#8B5CF6', '#0D9488', '#16A34A', '#DC2626', '#B91C1C', '#F97316',
                 '#A855F7', '#14B8A6', '#F59E0B', '#10B981', '#3F83F8', '#6B7280', '#60A5FA'
             ];
-            
-            new Chart(ctx, {
+
+            charts[canvasId] = new Chart(ctx, {
                 type: 'pie',
                 data: {
                     labels: Object.keys(dataObj),
@@ -88,7 +105,7 @@
                 options: { responsive: true }
             });
         }
-        
+
         document.addEventListener('DOMContentLoaded', () => {
             fetchData();
             setInterval(fetchData, UPDATE_INTERVAL_MS);
